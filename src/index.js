@@ -3,6 +3,7 @@ import express from 'express';
 import http from 'http';
 import { matchRouter } from "./routes/matches.js"
 import { attachWebSocketServer } from '../ws/server.js';
+import { securityMiddleware } from './arcjet.js';
 
 const PORT = Number(process.env.PORT || 8080);
 const HOST = process.env.HOST || 'localhost';
@@ -17,8 +18,8 @@ app.use(express.json());
 app.get('/', (req, res) => {
   res.send({ message: 'Welcome to the Sportz Server!' });
 });
-
-app.use('/matches', matchRouter)
+app.use(securityMiddleware());
+app.use('/matches', matchRouter);
 
 // Attach WebSocket server
 const { broadcastMatchCreated } = attachWebSocketServer(server);

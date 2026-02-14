@@ -1,5 +1,14 @@
 import { WebSocketServer } from 'ws';
+import { wsArcjet } from '../src/arcjet.js';
 
+/**
+ * Send a JSON-encoded payload over a WebSocket if the socket is open.
+ *
+ * If the socket is not in the open state, this function does nothing.
+ *
+ * @param {import('ws').WebSocket} socket - The WebSocket to send the payload on.
+ * @param {*} payload - The value to JSON-serialize and send.
+ */
 function sendJson(socket, payload) {
   if (socket.readyState !== 1) return; // 1 = OPEN
   socket.send(JSON.stringify(payload));
@@ -14,10 +23,40 @@ function broadcast(wss, payload) {
   }
 }
 
+/**
+ * Attach a WebSocket endpoint to the provided HTTP server and expose helpers for broadcasting events.
+ *
+ * Binds a WebSocket server at path "/ws" and registers handlers for incoming connections, messages, and errors.
+ *
+ * @param {import('http').Server} server - HTTP server to attach the WebSocket endpoint to.
+ * @returns {{ broadcast: (payload: any) => void, broadcastMatchCreated: (match: any) => void, broadcastMatchUpdated: (match: any) => void, broadcastCommentary: (commentary: any) => void }}
+ * An object with helper functions:
+ * - `broadcast(payload)` — send `payload` to all connected clients.
+ * - `broadcastMatchCreated(match)` — broadcast a `match_created` event with `match` as data.
+ * - `broadcastMatchUpdated(match)` — broadcast a `match_updated` event with `match` as data.
+ * - `broadcastCommentary(commentary)` — broadcast a `commentary_added` event with `commentary` as data.
+ */
 export function attachWebSocketServer(server) {
   const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 1024 * 1024 });
 
-  wss.on('connection', (socket) => {
+  wss.on('connection', async(socket ,req) => {
+    if(wsArcjet){
+      try{
+        const decision = await wsArcjet.protect(req);
+        if (decision.isDenied()){
+          const code = decision.reason.isRateLimit() ? 1013 :1008;
+          const reason = decision.reason.isRateLimit()? 'Rate limit exceeded':'Access denied';
+
+          socket.close(code,reason);
+          return;
+        }
+
+      }catch (e){
+        console.error('WS connection error',e );
+        socket.close(1011, 'Server security error');
+        return
+      }
+    }
     console.log('✅ Client connected to WebSocket');
     sendJson(socket, { type: 'welcome', message: 'Connected to Sportz server' });
 
@@ -57,5 +96,4 @@ export function attachWebSocketServer(server) {
     broadcastCommentary,
   };
 }
-
 
